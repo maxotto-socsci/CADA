@@ -1,7 +1,7 @@
 # Context Adaptive Dictionary Analysis (CADA)
 
 This repository contains the scripts used to build and apply the
-**CADA** dictionaries for the paper *"Context Adaptive Dictionary Analysis: "* (TODO: Citation).
+**CADA** dictionaries for the paper *"Context Adaptive Dictionary Analysis"* (TODO: eventual citation).
 
 To run the pre-specified pipeline, you can clone the repository,
 install the dependencies, point the scripts at your own data, and
@@ -29,13 +29,13 @@ Two further files support this pipeline:
   primitives in turn from
   https://github.com/barahona-research-group/severability). No
   external installation of LGDE is required.
-- `example_pipeline.py` — wires the four steps together on a tiny
-  example in order to illustrate order of operations.
+- `example_pipeline.ipynb` — a Jupyter notebook wiring the four steps together on a tiny
+  example in order to illustrate the order of operations.
 
 The `aux/` folder holds bundled defaults used in the original paper: a stop-word reference for
-the kernel filter, the kernel dictionary used for *Moral Foundations* centroids, and the
-neutral reference dictionary. The `dictionaries/` folder holds the
-scored CSVs that `scoring.py` applies to corpora.
+the kernel filter, the kernel dictionary built for *Moral Foundations* centroids, and a
+neutral reference dictionary. The `dictionaries/` folder holds pre-computed CADA MFT dictionaries that
+can be applied to diachronic corpora via `scoring.py`.
 
 ## Setup
 
@@ -46,8 +46,8 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm   # used by scoring.py
 ```
 
-The pipeline runs natively with per-decade Google Ngram word2vec embeddings
-(`{year}-vocab.pkl` and `{year}-w.npy` for each decade in 1800–1990) 
+The pipeline runs natively on word2vec embeddings
+(`{year}-vocab.pkl` and `{year}-w.npy` for each period/year) 
 which are **not** distributed alongside the repository (see 
 [Hamilton et al. 2018](https://doi.org/10.48550/arXiv.1605.09096) )
 
@@ -55,10 +55,9 @@ They can be obtained via https://nlp.stanford.edu/projects/histwords/ and
 placed in `aux/embeddings/` or 
 passed via an alternative path to the relevant function via `embedding_folder=...`.
 
-With minor adjustments to the codebase, users can also supply alternative word 
-pre-trained embeddings such as those derived over alternative corpora in the 
-[HistWordProject](https://nlp.stanford.edu/projects/histwords/) 
-(COHA, German, French, Chinese among others) or custom trained ones.
+To allow for a minimal reproducible example, `aux/sample_embeddings` holds a unsystematic 
+sample of Google Books derived embeddings from three decades. Please note that these are for illustrative 
+purposes only and do not allow for genuine analyses. 
 
 ## Using the scripts
 
@@ -98,38 +97,71 @@ remaining usable across the full historical window.
 
 ### Method
 
-Two filters, are applied:
+Two filters are applied:
 
 1. **Frequency filter.** Each candidate's minimum Google Ngram
    frequency across all years must reach `freq_cutoff` (default
-   `1e-6`).
+   `1e-6`). Pass `fetch_ngrams=False` (or `--no-ngrams` on the CLI)
+   to skip this filter entirely.
 2. **Semantic-change filter.** Two cosine-distance statistics are
-   computed per candidate (`total_change_1800_1990` and
-   `avg_decade_change`) on decadal embeddings and benchmarked against the same statistics on
-   a reference set of neutral words. A candidate is retained only if
-   both fall below the configurable percentile (`change_percentile`,
-   default `0.95`) of this null distribution.
+   computed per candidate (`total_change` and `avg_decade_change`) on
+   the supplied embeddings and benchmarked against the same statistics
+   on a reference set of neutral words (by default, stop words).
+   A candidate is retained only if both fall below the configurable
+   percentile (`change_percentile`, default `0.95`) of this null
+   distribution.
 
-The script also allows passing words ending in `*`, which treated as stems and expanded
+The script also allows passing words ending in `*`, which are treated as stems and expanded
 via WordNet (and the `english_words` package when available) prior to scoring.
+
+### Reference distribution
+
+The null distribution is computed from the same embeddings
+used for seed scoring through a user supplied .csv file with a `word` column (these should be
+words assumed to be semantically stable). If none is supplied, the script defaults to `aux/stopwords.csv` 
+which is a list of stopwords. For each reference word, the script computes:
+
+- `total_change` — cosine distance between the first and last supplied year.
+- `avg_decade_change` — mean cosine change across consecutive year steps.
+
+The thresholds are always calibrated to whatever year range
+supplied. For example, with embeddings for 1800, 1850, and 1950,
+`total_change` spans 1800→1950 and `avg_decade_change` averages
+1800→1850 and 1850→1950.
 
 ### Example
 
 ```python
 from kernel import get_kernel_dictionary
 
+# Default: stopwords.csv is scored against all embeddings in aux/embeddings/.
 get_kernel_dictionary(
     input_file="seeds/curated_seed_dictionary.xlsx",
     output_file="kernel_dictionary.csv",
     freq_cutoff=1e-6,
     change_percentile=0.95,
 )
+
+# Custom year range: thresholds are calibrated to 1800, 1850, 1950 only.
+get_kernel_dictionary(
+    input_file="seeds/curated_seed_dictionary.xlsx",
+    output_file="kernel_dictionary.csv",
+    years=[1800, 1850, 1950],
+    fetch_ngrams=False,   # skip frequency filter
+)
+
+# Custom reference word list.
+get_kernel_dictionary(
+    input_file="seeds/curated_seed_dictionary.xlsx",
+    output_file="kernel_dictionary.csv",
+    reference_file="my_reference_words.csv",  # needs a 'word' column
+)
 ```
 
-### Required auxiliary data
+### Auxiliary data
 
-- `aux/stopword_change.csv` — the bundled null-distribution reference.
-- `aux/embeddings/{year}-vocab.pkl` and `aux/embeddings/{year}-w.npy`.
+- `aux/stopwords.csv` — plain stop-word list (default reference). 
+- `aux/embeddings/{year}-vocab.pkl` and `aux/embeddings/{year}-w.npy` (embeddings).
 
 ## 2. Kernel Expansion (`expansion.py`)
 
@@ -159,7 +191,7 @@ kernel seed using one of three methods:
 Each decade writes its expansion to a per-decade CSV in a working
 directory. Once all decades are done, the per-decade CSVs are
 concatenated, stop words / words containing digits / words shorter
-than `min_word_length` characters are dropped 
+than `min_word_length` characters are dropped (this can guard against OCR noise)
 and the result is deduplicated on (foundation, word). Note, that depending on the use case, 
 these filters may want to be adapted. The integrated dictionary is
 written to `output_file`; the per-decade intermediates are deleted
@@ -215,7 +247,7 @@ not use the LGDE backend.
 
 This calculates moral-relevance trajectories for words in a given
 (expanded) dictionary: for every (foundation, word) pair, it produces
-a per-decade — and, optionally, per-year — series quantifying the
+a per-embedding-period — and, optionally, per-year — series quantifying the
 proximity of that word's diachronic embedding to its foundation
 relative to a neutral baseline. The output is the input format
 expected by `scoring.py`, so the function bridges the dictionary-
@@ -223,25 +255,25 @@ construction stage with the document-scoring stage.
 
 ### Method
 
-For each decade and each word, four centroids are computed in the
-corresponding embedding space: the centroid of the foundation kernel
-for that word's foundation, and centroids of three reference *neutral*
-subspaces (`neutral.world`, `neutral.mind`, `neutral.society`).
-Proximity is the temperature-scaled exponential of the Euclidean
-distance,
+For each decade and each word, the script computes the centroid of the
+foundation kernel for that word's foundation, plus one centroid per
+category in the neutral reference dictionary.  Proximity is the
+temperature-scaled exponential of the Euclidean distance,
 
     proximity(w, c; T) = exp(- || w - c ||_2 / T),
 
 and the moral-relevance score is the soft-max share of the moral
-proximity in the sum of moral and neutral proximities.
+proximity in the sum of moral and all neutral/reference proximities.
 
-This module deliberately omits the eMFD-based temperature optimisation
-of the original calibration script: the caller supplies the
-temperature directly via `temp`, and Euclidean distance is hard-coded
-(the cosine variant has been removed). When `smooth_interpolate=True`
-(default), each (word, foundation) trajectory is LOESS-smoothed at
-bandwidth `loess_span` (default 0.3) and linearly interpolated to a
-yearly grid covering `year_start..year_end`.
+The number of neutral/reference categories is inferred automatically from the
+unique values in the `foundation` column of the neutral reference file,
+so a file with one category, three, or more all work without any code
+changes.  The default file (`aux/neutral_dictionary.csv`) provides three
+subspaces: `neutral.world`, `neutral.mind`, and `neutral.society`.
+
+When `smooth_interpolate=True` (default), each (word, foundation) trajectory
+is LOESS-smoothed at bandwidth `loess_span` (default 0.3) and linearly
+interpolated to a yearly grid covering `year_start..year_end`.
 
 ### Example
 
@@ -263,12 +295,20 @@ compute_moral_relevance(
 the function works out of the box. Per-decade embeddings must be
 provided separately (see Setup).
 
+To use a custom neutral reference, supply any CSV with `foundation` and
+`word` columns via `neutral_file`. The script infers the number of
+neutral categories from the unique values in `foundation` — you are not
+limited to three. Please note that when building a custom reference dictionary, 
+it is advisable to run the `get_kernel_dictionary()` function on this reference 
+prior to using it in this step to ensure semantic stability of the included 
+reference centroids.
+
 ## 4. Document Scoring (`scoring.py`)
 
 `score_docs(df, dic_type, aggregation="per_moral")` applies a scored
 dictionary from `dictionaries/` to a corpus. The input DataFrame must
 contain a `text` column (string) and a `year` column (numeric). The
-function returns the same DataFrame with one column per vice/virtue
+function returns the same DataFrame with one column per 
 foundation plus `moral_nonmoral_ratio`. When the dictionary doesn't
 contain a column for the document's exact year, the closest available
 year is used (with a warning).
@@ -319,20 +359,19 @@ scored_rate = score_docs(
 ```
 CADAscore/
 ├── README.md
-├── LICENSE
 ├── requirements.txt
-├── .gitignore
-├── example_pipeline.py     # end-to-end demo
+├── example_pipeline.ipynb     # end-to-end demo
 ├── kernel.py
 ├── expansion.py
 ├── relevance.py
 ├── scoring.py
 ├── lgde_cluster.py         # vendored LGDE backend
 ├── aux/
-│   ├── stopword_change.csv      # null distribution for kernel.py
+│   ├── stopwords.csv            # plain stop-word list (default reference for kernel.py)
 │   ├── CADA_KERNEL.csv          # default moral kernel for relevance.py
 │   ├── neutral_dictionary.csv   # default neutral references for relevance.py
-│   └── embeddings/              # per-decade word2vec files (NOT bundled)
+│   ├── example_embeddings/      # sampled GoogleBooks derived embeddings for illustration
+│       └──
 └── dictionaries/                # scored CSVs consumed by scoring.py
     └── ...
 ```
