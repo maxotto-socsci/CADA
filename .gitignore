@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+
+# Exception: vocabulary-pruned sample embeddings are small enough to ship
+!aux/sample_embeddings/*.pkl
+!aux/sample_embeddings/*.npy
+
+# Per-run intermediates and notebook output
+lgde_expanded_*.csv
+example_output/
+
+# Local utility script for generating sample embeddings (not for distribution)
+prepare_sample_embeddings.py
+
+# Renders / build output
+README.html
+build/
+dist/
