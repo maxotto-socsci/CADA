@@ -1,19 +1,28 @@
 # Context Adaptive Dictionary Analysis (CADA)
 
-This repository contains the scripts used to build and apply the
-**CADA** dictionaries for the paper *"Context Adaptive Dictionary Analysis"* (TODO: eventual citation).
+This repository contains the scripts to build and apply
+**CADA** dictionaries as described in the paper *"Context Adaptive Dictionary Analysis"* (TODO: eventual citation).
 
 To run the pre-specified pipeline, you can clone the repository,
 install the dependencies, point the scripts at your own data, and
 either run them from the command line or copy the functions into your
 own code.
 
+# Table of Contents
+- [General Structure and Setup](#general-structure)
+- [1. Kernel Construction](#kernel-construction)
+- [2. Kernel Expansion](#kernel-expansion)
+- [3. Construct-Relevance trajectories](#moral-trajectories)
+- [4. Scoring](#document-scoring)
+- [Attribution](#attribution)
 
-## General structure
+## General Structure
 
 The full pipeline has four stages, each implemented in a single Python file:
 
 ```
+    1.                    2.                3.               4. 
+    
 kernel.py        ->  expansion.py  ->  relevance.py  ->  scoring.py
 build a kernel       expand dict.       score the         apply to
 of diachronically    on diachronic      expanded          documents
@@ -34,14 +43,14 @@ Two further files support this pipeline:
 
 The `aux/` folder holds bundled defaults used in the original paper: a stop-word reference for
 the kernel filter, the kernel dictionary built for *Moral Foundations* centroids, and a
-neutral reference dictionary. The `dictionaries/` folder holds pre-computed CADA MFT dictionaries that
-can be applied to diachronic corpora via `scoring.py`.
+neutral reference dictionary (derived from [The Historical Thesaurus of English](https://ht.ac.uk/)). The `dictionaries/` folder holds pre-computed CADA MFT dictionaries that
+can be applied to diachronic corpora via `scoring.py` out of the box.
 
-## Setup
+### Setup
 
 ```bash
-git clone <repo-url> CADAscore
-cd CADAscore
+git clone <repo-url>
+cd CADA
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm   # used by scoring.py
 ```
@@ -59,7 +68,7 @@ To allow for a minimal reproducible example, `aux/sample_embeddings` holds a uns
 sample of Google Books derived embeddings from three decades. Please note that these are for illustrative 
 purposes only and do not allow for genuine analyses. 
 
-## Using the scripts
+### Using the scripts
 
 Each script can be used in three ways:
 
@@ -84,7 +93,7 @@ Each script can be used in three ways:
 
 The sections below describe each stage in detail.
 
-## 1. Kernel Dictionary Construction (`kernel.py`)
+## <a id="kernel-construction"></a>1. Kernel Dictionary Construction (`kernel.py`)
 
 ### Purpose
 
@@ -163,7 +172,7 @@ get_kernel_dictionary(
 - `aux/stopwords.csv` — plain stop-word list (default reference). 
 - `aux/embeddings/{year}-vocab.pkl` and `aux/embeddings/{year}-w.npy` (embeddings).
 
-## 2. Kernel Expansion (`expansion.py`)
+## <a id="kernel-expansion"></a>2.  Kernel Expansion (`expansion.py`)
 
 ### Purpose
 
@@ -206,29 +215,29 @@ depending on the size of the kernel dictionary and the type of word embeddings.
 ```python
 from expansion import expand_kernel_lgde
 
-# Graph-based (default): severability with k=15 and Markov time t=5.
+# Graph-based (default): severability with k=10 and Markov time t=5.
 expand_kernel_lgde(
     kernel_file="kernel.csv",
     output_file="expanded.csv",
     method="severability",
-    k=15,
+    k=10,
     t=5,
 )
 
-# Graph-free: keep everything within cosine similarity 0.3 of any seed.
+# Graph-free: keep everything within cosine similarity 0.4 of any seed.
 expand_kernel_lgde(
     kernel_file="kernel.csv",
     output_file="expanded_cos03.csv",
     method="cosine",
-    cosine_threshold=0.3,
+    cosine_threshold=0.4,
 )
 ```
 
 The same options are available from the command line:
 
 ```bash
-python expansion.py kernel.csv expanded_cos03.csv \
-    --method cosine --cosine-threshold 0.3
+python expansion.py kernel.csv expanded_cos04.csv \
+    --method cosine --cosine-threshold 0.4
 ```
 
 ### LGDE dependency and attribution
@@ -241,11 +250,11 @@ as `lgde_cluster.py`, adapted from
 No external installation of LGDE is required. The `cosine` method does
 not use the LGDE backend.
 
-## 3. Moral-Relevance Trajectories (`relevance.py`)
+## <a id="moral-trajectories"></a>3. Construct-Relevance Trajectories (`relevance.py`)
 
 ### Purpose
 
-This calculates moral-relevance trajectories for words in a given
+This calculates construct-relevance trajectories for words in a given
 (expanded) dictionary: for every (foundation, word) pair, it produces
 a per-embedding-period — and, optionally, per-year — series quantifying the
 proximity of that word's diachronic embedding to its foundation
@@ -289,7 +298,7 @@ compute_moral_relevance(
 )
 ```
 
-### Required auxiliary data
+### Auxiliary data
 
 `aux/CADA_KERNEL.csv` and `aux/neutral_dictionary.csv` are bundled, so
 the function works out of the box. Per-decade embeddings must be
@@ -301,9 +310,11 @@ neutral categories from the unique values in `foundation` — you are not
 limited to three. Please note that when building a custom reference dictionary, 
 it is advisable to run the `get_kernel_dictionary()` function on this reference 
 prior to using it in this step to ensure semantic stability of the included 
-reference centroids.
+reference centroids. Also note, that the number of reference categories
+may affect the `temp` parameter that needs to be supplied to obtain usable results 
+(more categories may require lower values and vice versa).
 
-## 4. Document Scoring (`scoring.py`)
+## <a id="document-scoring"></a>4. Document Scoring (`scoring.py`)
 
 `score_docs(df, dic_type, aggregation="per_moral")` applies a scored
 dictionary from `dictionaries/` to a corpus. The input DataFrame must
@@ -319,7 +330,7 @@ For each document, the foundation score is the count-weighted sum of
 the dictionary's per-word probabilities, normalised by a denominator
 chosen via the `aggregation` argument:
 
-- **`per_moral`** (default) divides by the number of moral tokens
+- **`per_moral`** (default) divides by the number of construct tokens
   (tokens that appear in the dictionary). This is the rule used in
   [eMFDscore](https://github.com/medianeuroscience/emfdscore), a
   similar probabilistic-lexicon scorer, and it expresses each
@@ -330,10 +341,13 @@ chosen via the `aggregation` argument:
   numerator that CADA uses in place of binary keyword hits.
 
 The two rules answer different questions: `per_moral` asks "given that
-this document is talking about morality, which foundation does it
-emphasize?" while `per_total` asks "how morally loaded is this
-document overall, and along which foundation?". Choose the rule that
-matches your construct.
+this document is talking about the construct of interest (e.g., morality), 
+which aspect/foundation does it emphasize?" while `per_total` asks "how 
+morally/construct-specific loaded is this document overall, 
+and along which aspect/foundation?". Choose the rule that
+matches your goal. Similar to [eMFDscore](https://github.com/medianeuroscience/emfdscore), 
+the function also always returns a `moral_nonmoral_ratio`, which is the ratio 
+of dictionary tokens to non-dictionary tokens in the text. 
 
 ### Example
 
@@ -354,13 +368,21 @@ scored_rate = score_docs(
 )
 ```
 
+### Auxiliary data
+The repository ships two pre-scored Moral-Foundations Dictionaries 
+(based on different LGDE hyperparameters): `CADA-MFD_k10-t5.csv` (on which the 
+validation experiments in the paper are based) and the larger `CADA-MFD_k20-t5.csv` 
+(which is an alternative configuration on the stability-noise Pareto frontier; see
+Supplementary Materials of the paper). Both can be used to score historical corpora 
+out of the box. 
+
 ## Repository layout
 
 ```
 CADAscore/
 ├── README.md
 ├── requirements.txt
-├── example_pipeline.ipynb     # end-to-end demo
+├── example_pipeline.ipynb     # end-to-end demo (toy-example)
 ├── kernel.py
 ├── expansion.py
 ├── relevance.py
@@ -368,20 +390,19 @@ CADAscore/
 ├── lgde_cluster.py         # vendored LGDE backend
 ├── aux/
 │   ├── stopwords.csv            # plain stop-word list (default reference for kernel.py)
-│   ├── CADA_KERNEL.csv          # default moral kernel for relevance.py
+│   ├── CADA_KERNEL.csv          # default MFT kernel for relevance.py
 │   ├── neutral_dictionary.csv   # default neutral references for relevance.py
 │   ├── example_embeddings/      # sampled GoogleBooks derived embeddings for illustration
 │       └──
-└── dictionaries/                # scored CSVs consumed by scoring.py
+└── dictionaries/                # (pre-)scored CSVs referenced by scoring.py
     └── ...
 ```
 
-## License
+## <a id="attribution"></a>License
 
 GPL v3 (see `LICENSE`). Compatible with the vendored LGDE code, which
 is also GPL-licensed.
 
 ## Citation
 
-If you use these scripts, please cite the paper and link back to this
-repository.
+If you use these scripts, please cite the paper [...].
