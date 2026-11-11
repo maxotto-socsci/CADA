@@ -1,7 +1,7 @@
 # Context Adaptive Dictionary Analysis (CADA)
 
 This repository contains the scripts to build and apply
-**CADA** dictionaries as described in the paper *"Context Adaptive Dictionary Analysis"* (TODO: eventual citation).
+**CADA** dictionaries as described in the paper *"Context Adaptive Dictionary Analysis: Tracing Constructs in Historical Texts under Semantic Change"*.
 
 To run the pre-specified pipeline, you can clone the repository,
 install the dependencies, point the scripts at your own data, and
@@ -405,4 +405,4 @@ is also GPL-licensed.
 
 ## Citation
 
-If you use these scripts, please cite the paper [...].
+If you use these scripts, please cite the paper.
